@@ -3,6 +3,7 @@
 #include "QThread"
 #include <vector>
 #include "solution.h"
+#include "QMetaType"
 
 QtAstar::QtAstar(QWidget* parent)
 	: QMainWindow(parent)
@@ -10,6 +11,27 @@ QtAstar::QtAstar(QWidget* parent)
 	ui.setupUi(this);
 	ui.label->setText("");
 	ui.pushButton_2->setEnabled(false);
+
+	//多线程初始化相关
+	t = new QThread;
+	work = new solution;
+	// work->setThread(t);
+	work->moveToThread(t);
+	t->start();
+	connect(this, &QtAstar::startAlg, work, &solution::start);
+	qRegisterMetaType<std::vector<char>>("std::vector<char>");
+
+	connect(work, &solution::computeUpdate, this, &QtAstar::updateAns);
+
+	//cancel
+	connect(ui.pushButton_2, &QPushButton::clicked, [&] {
+		ui.pushButton->setEnabled(true);
+		ui.pushButton_2->setEnabled(false);
+		work->setRunning(false);
+		ui.label->setText("");
+	});
+
+	//start
 	connect(ui.pushButton, &QToolButton::clicked, [&] {
 		std::vector<char> digits = {};
 		for (int i = 1; i <= 9; ++i)
@@ -21,16 +43,13 @@ QtAstar::QtAstar(QWidget* parent)
 
 		if (solution::judge(digits))
 		{
+			work->setRunning(true);
 			ui.pushButton->setEnabled(false);
 			ui.pushButton_2->setEnabled(true);
-			solution a;
-			QThread t;
-			a.moveToThread(&t);
+
 			if (ui.radioButton->isChecked()) //A*
 			{
-				connect(&a, &solution::computeUpdate, this, &QtAstar::updateAns);
-				t.start();
-				a.Astar(digits);
+				emit startAlg(0, digits);
 			}
 			else //退火
 			{
@@ -45,7 +64,13 @@ QtAstar::QtAstar(QWidget* parent)
 }
 
 QtAstar::~QtAstar()
-{}
+{
+	work->setRunning(false);
+	t->quit();
+	t->wait();
+	delete t;
+	delete work;
+}
 
 void QtAstar::updateAns(int ans)
 {
@@ -53,9 +78,10 @@ void QtAstar::updateAns(int ans)
 	{
 		ui.label->setText(QString::fromLocal8Bit(std::format("使用了A*算法，算出最快可在{}步内还原", ans).c_str()));
 		ui.pushButton->setEnabled(true);
+		ui.pushButton_2->setEnabled(false);
 	}
 	else
 	{
-		ui.label->setText(QString::fromLocal8Bit(std::format("{}步之内未计算出来，正在尝试第{}步", -ans+1,-ans).c_str()));
+		ui.label->setText(QString::fromLocal8Bit(std::format("预估{}步之内得不出答案，正在预估{}步内", -(ans+1), -ans).c_str()));
 	}
 }
