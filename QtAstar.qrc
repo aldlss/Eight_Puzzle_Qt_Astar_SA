@@ -1,4 +1,5 @@
 <RCC>
-    <qresource prefix="QtAstar">
+    <qresource prefix="/QtAstar">
+        <file alias="aya">favicon.ico</file>
     </qresource>
 </RCC>

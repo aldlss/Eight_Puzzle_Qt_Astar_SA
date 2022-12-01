@@ -4,6 +4,7 @@
 #include <unordered_set>
 #include <queue>
 #include <QDebug>
+#include <random>
 
 solution::solution(QObject* parent)
 	:QObject(parent)
@@ -16,10 +17,23 @@ solution::~solution()
 
 void solution::start(int idx, std::vector<char> digits)
 {
+	std::array<std::array<int, 3>, 3>board;
+	//初始化，将char转为3*3格式，方便
+	for (int i = 0; i < 3; ++i)
+		for (int j = 0; j < 3; ++j)
+		{
+			int num = i * 3 + j;
+			if (std::toupper(digits[num]) == 'X')
+				board[i][j] = 0;
+			else
+				board[i][j] = digits[num] - '0';
+		}
+
+
 	if (idx == 0)
-		Astar(digits);
-	else
-	{}
+		Astar(board);
+	else if (idx == 1)
+		SimulatedAnnealing(board);
 }
 
 
@@ -39,7 +53,7 @@ bool solution::judge(std::vector<char>& digits)
 }
 
 //大概是估价函数
-int solution::node::getH()
+int solution::getH(const std::array<std::array<int, 3>, 3>&board)
 {
 	constexpr int xx[] = { 2,0,1,2,0,1,2,0,1 };
 	constexpr int yy[] = { 2,0,0,0,1,1,1,2,2 };
@@ -62,30 +76,24 @@ bool solution::node::operator<(const node& b) const
 	return f > b.f;
 }
 
-void solution::Astar(const std::vector<char>&digits)
+void solution::Astar(const std::array<std::array<int, 3>, 3>&digits)
 {
-	node now{ .nowStep = 0 , .last = -1}, temp{};
+	node now{ .board = digits, .nowStep = 0, .last = -1 }, temp{};
 
-	//初始化，将char转为3*3格式，方便
 	for (int i = 0; i < 3; ++i)
 		for (int j = 0; j < 3; ++j)
-		{
-			int num = i * 3 + j;
-			if (std::toupper(digits[num]) == 'X')
+			if (std::toupper(digits[i][j]) == 0)
 			{
 				now.x = j;
 				now.y = i;
-				now.board[i][j] = 0;
+				break;
 			}
-			else
-				now.board[i][j] = digits[num] - '0';
-		}
 
 	//计算初始条件
-	now.f = now.getH();
+	now.f = getH(now.board);
 	if (now.f == 0)
 	{
-		emit computeUpdate(0);
+		emit astarComputeUpdate(0);
 		return;
 	}
 
@@ -102,7 +110,7 @@ void solution::Astar(const std::vector<char>&digits)
 		if(now.f>nowf)
 		{
 			nowf = now.f;
-			emit computeUpdate(-nowf);
+			emit astarComputeUpdate(-nowf);
 		}
 
 		//走步
@@ -116,11 +124,11 @@ void solution::Astar(const std::vector<char>&digits)
 				continue;
 			std::swap(temp.board[now.y][now.x], temp.board[yy][xx]);
 
-			if (auto h = temp.getH(); h != 0)
+			if (auto h = getH(temp.board); h != 0)
 				temp.f = h + temp.nowStep;
 			else
 			{
-				emit computeUpdate(temp.nowStep);
+				emit astarComputeUpdate(temp.nowStep);
 				return;
 			}
 
@@ -132,4 +140,75 @@ void solution::Astar(const std::vector<char>&digits)
 			std::swap(temp.board[now.y][now.x], temp.board[yy][xx]);
 		}
 	}
+}
+
+void solution::SimulatedAnnealing(const std::array<std::array<int, 3>, 3>& digits)
+{
+	static std::mt19937 mt(std::random_device{}());
+	std::uniform_int<int>directRand(0, 3);
+
+	int x, y, xx, yy, del, nowh, direct, ans=0x3F3F3F3F;
+	 
+	for(int i=0;i<3;++i)
+		for(int j=0;j<3;++j)
+			if(digits[i][j]==0)
+			{
+				x = j;
+				y = i;
+				break;
+			}
+
+	int maxRound=3000;
+	if(getH(digits)==0)
+	{
+		emit SAupdate(maxRound, 0);
+		return;
+	}
+
+	std::array<std::array<int, 3>, 3>board{};
+	for(int i=1;i<=maxRound&&running;++i)
+	{
+		emit SAupdate(i, -ans);
+
+		int step = 0, best = 0x3F3F3F3F;
+		double T = 20;
+		board = digits;
+		while(T>=1e-100)
+		{
+			++step;
+
+			do//超出范围的不走，以及不往回走，不符合条件就再摇一个方向
+				{
+				direct = directRand(mt);
+				xx = x + dx[direct];
+				yy = y + dy[direct];
+				} while (xx < 0 || xx >= 3 || yy < 0 || yy >= 3);
+
+			std::swap(board[y][x], board[yy][xx]);
+
+			nowh = getH(board);
+			if(nowh==0)
+			{
+				ans = std::min(ans, step);
+				break;
+			}
+
+			del = nowh - best;
+			if (del < 0)
+			{
+				best = nowh;
+				x = xx;
+				y = yy;
+			}
+			else if (std::generate_canonical<double, 10>(mt) < std::exp(-del / T))//接受新解
+			{
+				x = xx;
+				y = yy;
+			}
+			else std::swap(board[y][x], board[yy][xx]);
+
+			T *= 0.98;
+		}
+	}
+	if(running)emit SAupdate(maxRound, ans);
 }
