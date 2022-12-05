@@ -159,6 +159,7 @@ void solution::SimulatedAnnealing(const std::array<std::array<int, 3>, 3>& digit
 			}
 
 	int maxRound=3000;
+	int originX = x, originY = y;
 	if(getH(digits)==0)
 	{
 		emit SAupdate(maxRound, 0);
@@ -173,6 +174,8 @@ void solution::SimulatedAnnealing(const std::array<std::array<int, 3>, 3>& digit
 		int step = 0, best = 0x3F3F3F3F;
 		double T = 20;
 		board = digits;
+		x = originX;
+		y = originY;
 		while(T>=1e-100)
 		{
 			++step;
